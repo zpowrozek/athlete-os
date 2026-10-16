@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<title>Athlete OS — Demo Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* HUD/mission-control theme by default; light is an explicit opt-out via data-theme="light" */
+  :root {
+    --surface-1: #0e1b2c;
+    --surface-2: #101f33;
+    --page: #060d17;
+    --text-primary: #eaf6ff;
+    --text-secondary: #9fc4d8;
+    --text-muted: #5c7f96;
+    --grid: #16304a;
+    --baseline: #274a68;
+    --border: rgba(56,224,235,0.22);
+    --shadow-1: 0 1px 2px rgba(0,0,0,.5), 0 10px 32px -16px rgba(0,0,0,.75);
+
+    --blue-450: #3fa0ff;   /* swim / primary brand blue */
+    --blue-300: #6fbaff;
+    --blue-200: #9ecfff;
+    --blue-100: #123a63;
+    --blue-650: #bfe3ff;
+
+    --aqua: #1fe6b8;       /* bike */
+    --green: #4be85a;      /* run */
+    --violet: #a68bff;     /* strength / coaching accent */
+
+    --good: #33e07a;
+    --warning: #ffc247;
+    --serious: #ff9760;
+    --critical: #ff5c6c;
+
+    --tech-glow: #2de3f0;   /* HUD accent — live indicators, scan line, panel glow, gauges */
+
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  :root[data-theme="light"] {
+    --surface-1: #fcfcfb; --surface-2: #f7f9fb; --page: #f2f5f9; --text-primary: #0b0b0b; --text-secondary: #52514e;
+    --text-muted: #898781; --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --shadow-1: 0 1px 2px rgba(16,40,80,.05), 0 10px 28px -16px rgba(16,40,80,.20);
+    --blue-450: #2a78d6; --blue-300: #6da7ec; --blue-200: #9ec5f4; --blue-100: #cde2fb; --blue-650: #104281;
+    --aqua: #1baf7a; --green: #008300; --violet: #4a3aa7; --tech-glow: #14b8c4;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--page); }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    background-color: var(--page);
+    background-image:
+      radial-gradient(900px circle at 8% -12%, color-mix(in srgb, var(--blue-450) 22%, transparent), transparent 55%),
+      radial-gradient(700px circle at 108% -4%, color-mix(in srgb, var(--aqua) 18%, transparent), transparent 55%),
+      radial-gradient(800px circle at 50% 115%, color-mix(in srgb, var(--green) 14%, transparent), transparent 60%),
+      repeating-linear-gradient(135deg, color-mix(in srgb, var(--tech-glow) 6%, transparent) 0px, color-mix(in srgb, var(--tech-glow) 6%, transparent) 1.5px, transparent 1.5px, transparent 58px),
+      radial-gradient(var(--grid) 1px, transparent 1px);
+    background-size: auto, auto, auto, auto, 22px 22px;
+    background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat;
+    background-attachment: fixed, fixed, fixed, fixed, fixed;
+  }
+
+  /* triathlon race-tape strip — swim / bike / run color bands, fixed to viewport top */
+  .race-tape {
+    position: fixed; top: 0; left: 0; right: 0; height: 5px; z-index: 20;
+    background: linear-gradient(90deg,
+      var(--blue-450) 0%, var(--blue-450) 33%,
+      var(--aqua) 33%, var(--aqua) 66%,
+      var(--green) 66%, var(--green) 100%);
+    background-size: 200% 100%;
+    animation: tapeSweep 6s linear infinite;
+    box-shadow: 0 0 14px -1px color-mix(in srgb, var(--tech-glow) 60%, transparent);
+  }
+  @keyframes tapeSweep { from { background-position: 0% 0; } to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .race-tape { animation: none; } }
+
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 18px 20px 36px; position: relative; }
+  /* On screens wider than a laptop, scale up instead of leaving the extra
+     width unused — capped at 2200px so lines don't get absurdly long on
+     an ultrawide/4K display. Below this breakpoint, behavior is unchanged
+     from the 1440px fixed width already tuned throughout this session. */
+  @media (min-width: 1500px) {
+    .wrap { max-width: min(94vw, 2200px); }
+  }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .wrap > * { animation: fadeUp .55s cubic-bezier(.2,.8,.2,1) both; }
+  .wrap > *:nth-child(1) { animation-delay: 0s; }
+  .wrap > *:nth-child(2) { animation-delay: .05s; }
+  .wrap > *:nth-child(3) { animation-delay: .10s; }
+  .wrap > *:nth-child(4) { animation-delay: .15s; }
+  .wrap > *:nth-child(5) { animation-delay: .20s; }
+  .wrap > *:nth-child(6) { animation-delay: .25s; }
+  .wrap > *:nth-child(7) { animation-delay: .30s; }
+  .wrap > *:nth-child(8) { animation-delay: .35s; }
+  @media (prefers-reduced-motion: reduce) { .wrap > * { animation: none; } }
+
+  /* ---------- header / hero ---------- */
+  .topbar {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 8px;
+  }
+  .brand { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+  .brand b { color: var(--blue-450); }
+  .updated { font-family: var(--mono); font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 7px; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tech-glow); position: relative; flex: none; }
+  .live-dot::before {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%;
+    border: 1px solid var(--tech-glow); opacity: .6;
+    animation: livePulse 2.2s ease-out infinite;
+  }
+  @keyframes livePulse { 0% { transform: scale(.4); opacity: .8; } 100% { transform: scale(1.8); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .live-dot::before { animation: none; } }
+
+  .hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-1);
+  }
+  .hero { overflow: hidden; }
+  .hero::before, .hero::after {
+    content: ""; position: absolute; width: 22px; height: 22px; opacity: .5; pointer-events: none; z-index: 2;
+  }
+  .hero::before { top: 10px; left: 10px; border-top: 2px solid var(--tech-glow); border-left: 2px solid var(--tech-glow); border-radius: 5px 0 0 0; }
+  .hero::after { bottom: 10px; right: 10px; border-bottom: 2px solid var(--tech-glow); border-right: 2px solid var(--tech-glow); border-radius: 0 0 5px 0; }
+
+  .hero-donut-block { position: relative; z-index: 1; }
+  @media (max-width: 960px) { .hero-donut-block { display: none; } }
+
+  .hero-figure { text-align: left; position: relative; z-index: 1; }
+
+  .countdown { display: flex; align-items: baseline; gap: 5px; }
+  .countdown-val {
+    font-size: 38px; font-weight: 700; line-height: 1;
+    background: linear-gradient(180deg, var(--blue-300), var(--blue-450) 65%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--mono);
+    filter: drop-shadow(0 2px 10px color-mix(in srgb, var(--blue-450) 30%, transparent));
+  }
+  .countdown-val.small { font-size: 18px; }
+  .countdown-seg { text-align: center; }
+  .countdown-unit {
+    font-size: 8.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em;
+    margin-top: 1px; font-weight: 600;
+  }
+  .countdown-sep {
+    font-size: 18px; font-weight: 700; color: var(--baseline); font-family: var(--mono);
+    transform: translateY(-5px);
+  }
+  .hero-label { font-size: 12px; color: var(--text-secondary); margin-top: 3px; font-weight: 500; }
+  .hero-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 1px; }
+
+  .hero-progress { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .hero-progress-value { font-size: 11.5px; font-weight: 700; }
+  .hero-progress-value .muted { color: var(--text-muted); font-weight: 500; }
+  .hero-progress-label { font-size: 9.5px; color: var(--text-muted); margin-top: 1px; }
+
+  .hero-meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px;
+    border-top: 1px solid var(--border); padding-top: 8px; position: relative; z-index: 1;
+  }
+  .meta-item .meta-value { font-size: 16px; font-weight: 700; }
+  .meta-item .meta-value.mono { font-family: var(--mono); text-shadow: 0 0 10px color-mix(in srgb, currentColor 45%, transparent); }
+  .meta-item .meta-label { font-size: 9px; color: var(--text-muted); margin-top: 1px; text-transform: uppercase; letter-spacing: .04em; }
+
+  /* ---------- generic card / grid ---------- */
+  .row { display: grid; gap: 14px; margin-bottom: 14px; }
+  .row.cols-2 { grid-template-columns: 1fr 1fr; }
+  .row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .row.cols-split { grid-template-columns: 0.5fr 1.5fr; align-items: stretch; }
+  .col-stack { display: flex; flex-direction: column; gap: 14px; }
+  /* Volume/Vert charts grow to fill whatever space is left once the grid
+     row stretches both columns to match the taller one — self-balances
+     at any window width instead of a fixed height */
+  .col-stack > .card-chart { flex: 1; display: flex; flex-direction: column; }
+  .card-chart .bars { flex: 1; height: auto; min-height: 100px; }
+  /* Right-column mirror of card-chart: when the left column is taller, the
+     sessions card grows and its rows share the slack evenly, so there's
+     never an empty gap under the right column */
+  .col-stack > .card-fill { flex: 1; display: flex; flex-direction: column; }
+  .card-fill .session-list { flex: 1; }
+  .card-fill .session-row { flex: 1; }
+  @media (max-width: 860px) {
+    .row.cols-2, .row.cols-3, .row.cols-split { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    --accent: var(--blue-450);
+    position: relative;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-1) 40%);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 15px 18px;
+    box-shadow: var(--shadow-1), 0 -10px 26px -16px color-mix(in srgb, var(--accent) 65%, transparent), inset 0 0 40px -30px var(--tech-glow);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card.accent-aqua { --accent: var(--aqua); }
+  .card.accent-good { --accent: var(--good); }
+  .card.accent-violet { --accent: var(--violet); }
+
+  /* HUD corner brackets — every panel reads as an instrument readout */
+  .card::before, .card::after {
+    content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none; opacity: .85; z-index: 1;
+  }
+  .card::before { top: -1px; left: -1px; border-top: 2px solid var(--tech-glow); border-left: 2px solid var(--tech-glow); border-radius: 4px 0 0 0; }
+  .card::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--tech-glow); border-right: 2px solid var(--tech-glow); border-radius: 0 0 4px 0; }
+
+  .card-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); margin: 0 0 9px 0; font-family: var(--mono);
+  }
+  .card-title::before { content: "▸ "; color: var(--tech-glow); }
+  .card-title .accent-dot {
+    display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; vertical-align:1px;
+    box-shadow: 0 0 6px 1px currentColor;
+  }
+
+  /* ---------- bar charts ---------- */
+  .chart-legend { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .bars {
+    display: flex; align-items: flex-end; gap: 10px; height: 100px;
+    border-bottom: 1px solid var(--baseline); padding-bottom: 0;
+    position: relative;
+  }
+  .gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid); }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; position: relative; }
+  .bar {
+    width: 100%; max-width: 34px; border-radius: 4px 4px 0 0;
+    position: relative; cursor: default;
+    transition: filter .12s ease, transform .12s ease;
+  }
+  .bar:hover, .bar:focus { filter: brightness(1.15); outline: none; transform: scaleY(1.01); }
+  .bar-col .bar-cap {
+    font-family: var(--mono); font-size: 11px; color: var(--text-secondary);
+    margin-bottom: 4px; white-space: nowrap;
+  }
+  .bar-col .bar-x-label { font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center; line-height: 1.3; }
+  .bar-col.in-progress .bar { opacity: .5; }
+  .bar-col .tag {
+    position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    margin-top: 1px; font-size: 9px; color: var(--text-muted); font-style: italic; white-space: nowrap;
+  }
+
+  .tooltip {
+    position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    background: var(--text-primary); color: var(--surface-1);
+    font-family: var(--mono); font-size: 11px; padding: 6px 9px; border-radius: 6px;
+    white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s ease;
+    z-index: 5;
+  }
+  .bar-col:hover .tooltip, .bar-col:focus-within .tooltip { opacity: 1; }
+
+  /* ---------- discipline icons ---------- */
+  .s-icon { display: inline-flex; margin-right: 7px; vertical-align: -2px; flex: none; }
+  .s-icon svg { display: block; }
+
+  /* ---------- this week's sessions ---------- */
+  .session-list { display: flex; flex-direction: column; gap: 2px; }
+  .session-row {
+    display: grid; grid-template-columns: 78px 20px 1fr auto; gap: 10px; align-items: center;
+    padding: 6px 0; border-bottom: 1px solid var(--grid);
+  }
+  .session-row:last-child { border-bottom: none; }
+  .session-day { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .session-row.today .session-day { color: var(--blue-450); }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .status-dot.done { background: var(--good); }
+  .status-dot.today { background: var(--blue-450); box-shadow: 0 0 0 3px var(--blue-100); }
+  .status-dot.upcoming { background: var(--baseline); }
+  .session-main .session-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; }
+  .session-main .session-detail { font-size: 11.5px; color: var(--text-secondary); font-family: var(--mono); margin-top: 1px; line-height: 1.35; }
+  .session-flag { font-size: 10.5px; color: var(--text-secondary); font-family: var(--mono); display: flex; align-items: center; gap: 4px; margin-top: 2px; line-height: 1.3; }
+  .session-flag .flag-icon { flex: none; }
+
+  /* ---------- today's session (full actionable detail for today only) ---------- */
+  .today-steps { list-style: none; margin: 0; padding: 0; }
+  .today-steps li {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    padding: 6px 0; border-bottom: 1px solid var(--grid); font-size: 12.5px;
+  }
+  .today-steps li:last-child { border-bottom: none; }
+  .today-steps li b { font-weight: 600; color: var(--text-primary); }
+  .today-steps li span { font-family: var(--mono); color: var(--text-secondary); font-size: 12px; text-align: right; white-space: nowrap; }
+  .session-dur { font-size: 12px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap; }
+
+  /* ---------- readiness card ---------- */
+  .readiness-call {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .readiness-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: color-mix(in srgb, var(--good) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--good) 35%, transparent);
+    padding: 7px 14px; border-radius: 999px; font-weight: 700; font-size: 15px;
+  }
+  .readiness-badge .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--good); }
+  .readiness-evidence { font-size: 12.5px; color: var(--text-secondary); line-height: 1.42; }
+  .readiness-evidence .num { font-family: var(--mono); color: var(--text-primary); }
+  .readiness-note {
+    margin-top: 8px; font-size: 11.5px; color: var(--text-muted); border-top: 1px solid var(--grid);
+    padding-top: 7px; font-style: italic; line-height: 1.4;
+  }
+
+
+  /* ---------- radial gauge (ACWR speedometer) ---------- */
+  .gauge-row { display: flex; justify-content: center; margin: 2px 0 0; }
+  .gauge { width: 220px; height: 160px; overflow: visible; }
+  .gauge .gauge-track { fill: none; stroke-linecap: round; }
+  .gauge .gauge-tick { stroke: var(--text-muted); stroke-width: 1; }
+  .gauge .gauge-tick-label { font-family: var(--mono); font-size: 9px; fill: var(--text-muted); text-anchor: middle; }
+  .gauge .gauge-needle { stroke-linecap: round; }
+  .gauge .gauge-hub { filter: drop-shadow(0 0 4px var(--tech-glow)); }
+  .gauge .gauge-value { font-family: var(--mono); font-weight: 700; font-size: 26px; text-anchor: middle; }
+  .gauge .gauge-label { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-anchor: middle; fill: var(--text-muted); }
+
+  /* ---------- donut (discipline split) ---------- */
+  .donut-wrap { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+  .donut { width: 62px; height: 62px; flex: none; }
+  .donut-center-val { font-family: var(--mono); font-weight: 700; font-size: 15px; text-anchor: middle; fill: var(--text-primary); }
+  .donut-center-label { font-family: var(--mono); font-size: 8px; text-anchor: middle; fill: var(--text-muted); letter-spacing: .05em; }
+  .donut-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .donut-legend li { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); font-family: var(--mono); white-space: nowrap; }
+  .donut-legend .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; box-shadow: 0 0 5px 0 currentColor; }
+  .donut-legend b { color: var(--text-primary); margin-left: auto; padding-left: 10px; }
+
+  /* ---------- pace stats (used inside .trend-wrap) ---------- */
+  .pace-label { font-size: 13px; font-weight: 700; }
+  .pace-value { font-size: 28px; font-weight: 700; font-family: var(--mono); }
+  .pace-goal { font-size: 12px; color: var(--text-muted); }
+  .pace-goal b { color: var(--text-secondary); font-family: var(--mono); }
+  .pace-note { font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-top: 2px; }
+
+  /* ---------- trend charts (full swim/bike/run performance trend) ---------- */
+  .trend-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .trend-head { display: flex; align-items: center; gap: 7px; }
+  .trend-head .pace-label { flex: none; }
+  .trend-goal { margin-left: auto; font-size: 11px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap; }
+  .trend-goal b { color: var(--text-secondary); }
+  .trend-chart { width: 100%; height: 118px; display: block; overflow: visible; }
+  .trend-chart .grid-h { stroke: var(--grid); stroke-width: 1; }
+  .trend-chart .goal-line { stroke-dasharray: 4 3; stroke-width: 1.4; fill: none; }
+  .trend-chart .trend-area { opacity: .14; }
+  .trend-chart .trend-line { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .trend-chart .trend-pt { stroke: var(--surface-1); stroke-width: 1.6; cursor: default; }
+  .trend-chart .trend-pt:hover { r: 5; }
+  .trend-chart .axis-x { font-family: var(--mono); font-size: 9px; fill: var(--text-muted); }
+  .trend-chart .axis-y { font-family: var(--mono); font-size: 9px; fill: var(--text-muted); }
+
+  /* ---------- coaching ---------- */
+  .coach-overview { font-size: 13.5px; line-height: 1.48; color: var(--text-secondary); margin-bottom: 12px; }
+  .coach-overview b { color: var(--text-primary); }
+  .insight-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 860px) { .insight-grid { grid-template-columns: 1fr; } }
+  .insight {
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
+    background: color-mix(in srgb, var(--violet) 5%, transparent);
+    border-left: 3px solid var(--violet);
+  }
+  .insight .framework {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--violet); margin-bottom: 4px;
+  }
+  .insight p { margin: 0; font-size: 12.5px; line-height: 1.42; color: var(--text-secondary); }
+  .insight p b { color: var(--text-primary); font-family: var(--mono); font-weight: 600; }
+
+  .tips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .tips li {
+    font-size: 12.5px; color: var(--text-secondary); padding-left: 20px; position: relative; line-height: 1.4;
+  }
+  .tips li::before { content: "→"; position: absolute; left: 0; color: var(--violet); font-weight: 700; }
+  .tips li b { color: var(--text-primary); }
+
+  footer { text-align: center; font-size: 11.5px; color: var(--text-muted); margin-top: 18px; line-height: 1.5; }
+  footer .sources { font-family: var(--mono); }
+</style>
+
+
+<div class="race-tape"></div>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand"><b>ATHLETE OS</b> — Demo Athlete · Lakeside Olympic Triathlon</div>
+    <div class="updated"><span class="live-dot"></span>Demo snapshot · Wed Apr 7 · Strava + training/ + races/ + health/ (COROS)</div>
+  </div>
+
+  <!-- OVERVIEW (left column) + TRENDS/SCHEDULE (right column) -->
+  <div class="row cols-split">
+    <div class="col-stack">
+
+      <!-- HERO: race countdown + totals overview -->
+      <div class="hero">
+        <div class="hero-figure">
+          <div class="countdown" id="countdown">
+            <div class="countdown-seg">
+              <div class="countdown-val" id="cd-days">38</div>
+              <div class="countdown-unit">Days</div>
+            </div>
+            <div class="countdown-sep">:</div>
+            <div class="countdown-seg">
+              <div class="countdown-val small" id="cd-hours">00</div>
+              <div class="countdown-unit">Hrs</div>
+            </div>
+            <div class="countdown-sep">:</div>
+            <div class="countdown-seg">
+              <div class="countdown-val small" id="cd-mins">00</div>
+              <div class="countdown-unit">Min</div>
+            </div>
+            <div class="countdown-sep">:</div>
+            <div class="countdown-seg">
+              <div class="countdown-val small" id="cd-secs">00</div>
+              <div class="countdown-unit">Sec</div>
+            </div>
+          </div>
+          <div class="hero-label">to Lakeside Olympic Triathlon</div>
+          <div class="hero-sub">Sat May 15 · Lakeside State Park · 7:30 AM wave</div>
+          <div class="hero-progress">
+            <svg width="34" height="34" viewBox="0 0 52 52">
+              <circle cx="26" cy="26" r="20" fill="none" stroke="var(--blue-100)" stroke-width="4"></circle>
+              <circle cx="26" cy="26" r="20" fill="none" stroke="var(--blue-450)" stroke-width="4"
+                stroke-linecap="round" stroke-dasharray="78.99 200" transform="rotate(-90 26 26)"></circle>
+            </svg>
+            <div>
+              <div class="hero-progress-value">Day 66 <span class="muted">of 105</span></div>
+              <div class="hero-progress-label">Block progress · 62.9% elapsed</div>
+            </div>
+          </div>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-item">
+            <div class="meta-value">Build · Wk 10<span style="font-size:14px; color:var(--text-muted);">/15</span></div>
+            <div class="meta-label">Current Phase</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-value mono">72h 40m</div>
+            <div class="meta-label">Total Training Hours</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-value mono" style="color:var(--text-muted)">0.77</div>
+            <div class="meta-label">ACWR (Today)</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-value mono" style="color:var(--good)">B</div>
+            <div class="meta-label">Week 9 Grade</div>
+          </div>
+        </div>
+        <div class="hero-donut-block">
+          <div class="donut-wrap">
+            <svg class="donut" id="hero-donut" viewBox="0 0 108 108"></svg>
+            <ul class="donut-legend">
+              <li><span class="sw" style="background:var(--blue-450); color:var(--blue-450);"></span>Swim<b>27.5%</b></li>
+              <li><span class="sw" style="background:var(--aqua); color:var(--aqua);"></span>Bike<b>36.0%</b></li>
+              <li><span class="sw" style="background:var(--green); color:var(--green);"></span>Run<b>24.5%</b></li>
+              <li><span class="sw" style="background:var(--violet); color:var(--violet);"></span>Strength<b>12.0%</b></li>
+            </ul>
+          </div>
+          <div class="hero-progress-label" style="text-align:center; margin-top:6px;">Training-hours split since Jan 11</div>
+        </div>
+      </div>
+
+      <!-- TODAY'S SESSION — full actionable detail, not just the weekly-list summary -->
+      <div class="card" style="--accent: var(--green);">
+        <div class="card-title"><span class="accent-dot" style="background:var(--green); color:var(--green)"></span>Today's Session — Strength B + Zone 2 Run</div>
+        <div class="chart-legend" style="margin-bottom:8px;">15 + 45 min · Build, Week 10 · easy day between two hard ones</div>
+        <ul class="today-steps">
+          <li><b>Strength B</b><span>Glute + core circuit, 15 min</span></li>
+          <li><b>Glute bridges</b><span>3×15</span></li>
+          <li><b>Band walks</b><span>3×20 steps</span></li>
+          <li><b>Dead bug · side plank</b><span>3×10 · 3×30 s each</span></li>
+          <li><b>Warmup</b><span>5 min walk, drills, 4 strides</span></li>
+          <li><b>Main set</b><span>35 min, HR 134–147 (aim 135–142)</span></li>
+          <li><b>Walk rule</b><span>HR &gt; 147 → walk to &lt; 140</span></li>
+          <li><b>Cooldown</b><span>5 min walk</span></li>
+        </ul>
+        <div class="pace-note">Glutes first so they're firing in the last 10 minutes, which is where the run has been fading.</div>
+      </div>
+
+      <!-- CHARTS: weekly volume + weekly vert -->
+      <div class="card card-chart">
+        <div class="card-title"><span class="accent-dot" style="background:var(--blue-450); color:var(--blue-450)"></span>Weekly Training Volume</div>
+        <div class="chart-legend">Hours per week, Mon–Sun · Swim + Bike + Run + Strength</div>
+        <div class="bars" id="chart-volume">
+          <div class="gridline" style="bottom:25%"></div>
+          <div class="gridline" style="bottom:50%"></div>
+          <div class="gridline" style="bottom:75%"></div>
+        </div>
+      </div>
+      <div class="card accent-aqua card-chart">
+        <div class="card-title"><span class="accent-dot" style="background:var(--aqua); color:var(--aqua)"></span>Weekly Vert (Elevation Gain)</div>
+        <div class="chart-legend">Feet climbed per week, Mon–Sun · bike + run</div>
+        <div class="bars" id="chart-vert">
+          <div class="gridline" style="bottom:25%"></div>
+          <div class="gridline" style="bottom:50%"></div>
+          <div class="gridline" style="bottom:75%"></div>
+        </div>
+      </div>
+
+    </div>
+    <div class="col-stack">
+
+      <!-- PACES + TRENDS -->
+      <div class="card">
+        <div class="card-title"><span class="accent-dot" style="background:var(--tech-glow); color:var(--tech-glow)"></span>Paces vs. A-Goal — Full Block</div>
+        <div class="chart-legend">Weekly average since Jan 11, oldest → newest · dashed line = A-goal race pace</div>
+        <div class="row cols-3" style="margin-bottom:0;">
+
+          <div class="trend-wrap">
+            <div class="trend-head">
+              <span class="s-icon" style="color:var(--blue-450)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 10c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0"/><path d="M1 13c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0" opacity=".5"/></svg></span>
+              <span class="pace-label">Swim</span>
+              <span class="trend-goal">Goal <b>2:30</b>/100yd</span>
+            </div>
+            <div class="pace-value" style="font-size:19px;">2:41<span style="font-size:12px; color:var(--text-muted);">/100yd</span></div>
+            <div class="pace-goal">Longest: <b>1,500 yd</b> / 1,640yd race</div>
+            <svg class="trend-chart" id="trend-swim"></svg>
+            <div class="pace-note">Latest (Tue 4/6): 1,300yd in 36 min, race-pace set trimmed to 4 × 100 after a 5.6 h night. Reps 2:30–2:33, the first at goal pace.</div>
+          </div>
+
+          <div class="trend-wrap">
+            <div class="trend-head">
+              <span class="s-icon" style="color:var(--aqua)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4" cy="12" r="2.6"/><circle cx="12" cy="12" r="2.6"/><path d="M4 12l3.5-6h3L12 12M7.5 6H6M9 6l1.5 3"/></svg></span>
+              <span class="pace-label">Bike</span>
+              <span class="trend-goal">Goal <b>17.0</b> mph</span>
+            </div>
+            <div class="pace-value" style="font-size:19px;">16.4<span style="font-size:12px; color:var(--text-muted);"> mph</span></div>
+            <div class="pace-goal">Longest: <b>26.2 mi</b> / 24.8mi race</div>
+            <svg class="trend-chart" id="trend-bike"></svg>
+            <div class="pace-note">Latest (Sat 4/3, brick): 17.1mi in 62 min, avg HR 139, 87 rpm. Zone 2 speed is up 1.3 mph since Week 5 at the same HR.</div>
+          </div>
+
+          <div class="trend-wrap">
+            <div class="trend-head">
+              <span class="s-icon" style="color:var(--green)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="2.6" r="1.4" fill="currentColor" stroke="none"/><path d="M9 4.5L6 7l1 3-2 4M9 4.5l3 2-1 3 2.5 2M6 7l3.5 1"/></svg></span>
+              <span class="pace-label">Run</span>
+              <span class="trend-goal">Goal <b>11:00</b>/mi</span>
+            </div>
+            <div class="pace-value" style="font-size:19px;">11:24<span style="font-size:12px; color:var(--text-muted);">/mi</span></div>
+            <div class="pace-goal">Longest: <b>5.6 mi</b> / 6.2mi race</div>
+            <svg class="trend-chart" id="trend-run"></svg>
+            <div class="pace-note">Latest (Sat 4/3, off the bike): 1.3mi in 15 min, avg HR 145. First brick run without a spike above 150 in the opening 5 minutes.</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- READINESS -->
+      <div class="card">
+        <div class="card-title"><span class="accent-dot" style="background:var(--blue-450); color:var(--blue-450)"></span>Today's Readiness Call</div>
+        <div class="readiness-call">
+          <div class="readiness-badge" style="background:color-mix(in srgb, var(--good) 14%, transparent); border-color:color-mix(in srgb, var(--good) 40%, transparent);"><span class="dot" style="background:var(--good)"></span> Go easy, as planned. Vitals are back to baseline after Monday's short night.</div>
+        </div>
+        <div class="row cols-2" style="margin-bottom:0; align-items: start;">
+          <div class="readiness-evidence">
+            <b>ACWR <span class="num">0.77</span></b>, just under the 0.8 floor because the recovery week is still in the acute window (acute 251 / chronic 326, 28/28 days). <b>RHR 55</b> vs. 55.1 baseline. <b>HRV 93</b>, 7-day avg 94.0, CV 3.1%. <b>Sleep 7.6 h</b>, Score 83. COROS recovery 88%. No soreness logged.
+            <div class="readiness-note" style="border-top:none; padding-top:0; margin-top:10px;">Watch: Thursday's intervals go ahead if RHR, HRV and sleep hold tomorrow.</div>
+          </div>
+          <div>
+            <div class="gauge-row" style="margin-top:-8px;">
+              <svg class="gauge" id="gauge-acwr" viewBox="0 0 240 175"></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WEEKLY SCHEDULE (this week's sessions) -->
+      <div class="card card-fill">
+        <div class="card-title"><span class="accent-dot" style="background:var(--blue-450); color:var(--blue-450)"></span>This Week's Sessions — Week 10 (Apr 5–Apr 11, Build)</div>
+        <div class="chart-legend" style="margin-top:-6px;">Build II · ~330 min endurance planned, +9% on Week 8 · 1.0h done so far</div>
+        <div class="session-list">
+
+          <div class="session-row">
+            <div class="session-day">Mon 4/5</div>
+            <div class="status-dot done"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--text-muted)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12.5 10.5A5.5 5.5 0 0 1 5.5 3.5a5.5 5.5 0 1 0 7 7z"/></svg></span>
+                Rest
+              </div>
+              <div class="session-detail">Full rest, nothing logged.</div>
+            </div>
+            <div class="session-dur">0 min</div>
+          </div>
+
+          <div class="session-row">
+            <div class="session-day">Tue 4/6</div>
+            <div class="status-dot done"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--blue-450)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 10c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0"/><path d="M1 13c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0" opacity=".5"/></svg></span>
+                Swim, Race Pace ★ + Strength C
+              </div>
+              <div class="session-detail">1,300yd/36 min, avg HR 148. Main set 4 × 100 @ 2:30–2:33 (trimmed from 6 for short sleep). Strength C 12 min.</div>
+              <div class="session-flag">Downgraded: 5.6 h sleep before a hard session</div>
+            </div>
+            <div class="session-dur">48 min</div>
+          </div>
+
+          <div class="session-row today">
+            <div class="session-day">Wed 4/7</div>
+            <div class="status-dot upcoming"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--green)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="2.6" r="1.4" fill="currentColor" stroke="none"/><path d="M9 4.5L6 7l1 3-2 4M9 4.5l3 2-1 3 2.5 2M6 7l3.5 1"/></svg></span>
+                Strength B + Run, Zone 2
+              </div>
+              <div class="session-detail">15 + 45 min, HR 134–147. Full detail in the Today's Session card.</div>
+            </div>
+            <div class="session-dur">60 min</div>
+          </div>
+
+          <div class="session-row">
+            <div class="session-day">Thu 4/8</div>
+            <div class="status-dot upcoming"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--aqua)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4" cy="12" r="2.6"/><circle cx="12" cy="12" r="2.6"/><path d="M4 12l3.5-6h3L12 12M7.5 6H6M9 6l1.5 3"/></svg></span>
+                Bike, Cruise Intervals ★
+              </div>
+              <div class="session-detail">60 min. 3 × 10 min Z4 (155–164) @ 90–95 rpm, 3 min easy between.</div>
+            </div>
+            <div class="session-dur">60 min</div>
+          </div>
+
+          <div class="session-row">
+            <div class="session-day">Fri 4/9</div>
+            <div class="status-dot upcoming"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--blue-450)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 10c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0"/><path d="M1 13c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0" opacity=".5"/></svg></span>
+                Swim, Endurance + Strength A
+              </div>
+              <div class="session-detail">~1,350yd, 3 × 350 continuous Z2. Gym 25 min, 3×12.</div>
+            </div>
+            <div class="session-dur">65 min</div>
+          </div>
+
+          <div class="session-row">
+            <div class="session-day">Sat 4/10</div>
+            <div class="status-dot upcoming"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--aqua)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4" cy="12" r="2.6"/><circle cx="12" cy="12" r="2.6"/><path d="M4 12l3.5-6h3L12 12M7.5 6H6M9 6l1.5 3"/></svg></span>
+                Brick ★ — Long Bike + Run
+              </div>
+              <div class="session-detail">90 min Z2 @ 80–90 rpm, 40–50 g carbs/h, then 25 min Z2 run.</div>
+            </div>
+            <div class="session-dur">115 min</div>
+          </div>
+
+          <div class="session-row">
+            <div class="session-day">Sun 4/11</div>
+            <div class="status-dot upcoming"></div>
+            <div class="session-main">
+              <div class="session-name">
+                <span class="s-icon" style="color:var(--text-muted)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12.5 10.5A5.5 5.5 0 0 1 5.5 3.5a5.5 5.5 0 1 0 7 7z"/></svg></span>
+                Rest
+              </div>
+              <div class="session-detail">Day after the brick. Nothing planned.</div>
+            </div>
+            <div class="session-dur">0 min</div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- COACHING -->
+  <div class="card accent-violet" style="margin-bottom:20px;">
+    <div class="card-title">Coach's Take</div>
+    <div class="coach-overview">
+      <b>Day 66 of 105, Build Week 10</b>, 38 days to Lakeside. The recovery week did its job: HRV averaged <b>94.6</b> across Week 9, the highest of the block, and the race-pace swim landed at <b>2:31–2:34</b>.
+      This week re-opens the load at <b>+9% on Week 8</b>, not on the recovery week. Monday's short night cost two reps on Tuesday; everything since is back to baseline.
+    </div>
+
+    <div class="insight-grid">
+      <div class="insight">
+        <div class="framework">Gabbett & Hulin · ACWR After a Recovery Week</div>
+        <p>ACWR reads <b>0.77</b> today, under the 0.8 floor. That isn't detraining: Week 9's reduced load is in the acute window. Expect it to climb to <b>~1.1</b> by Sunday as Build sessions replace recovery days. A reading over 1.3 after Saturday's brick would be the real flag.</p>
+      </div>
+      <div class="insight">
+        <div class="framework">Dixon · Sleep Decides the Key Session</div>
+        <p>Tuesday's <b>5.6 h</b> night triggered the sleep-debt rule: same pace, fewer reps. The four reps that happened were the first ever at goal pace (<b>2:30</b>). Cutting volume, not intensity, kept the session's stimulus while respecting a night that couldn't support six.</p>
+      </div>
+      <div class="insight">
+        <div class="framework">Friel · Aerobic Decoupling</div>
+        <p>Saturday's 62 min brick ride drifted <b>3.1%</b> (HR vs. speed, first half to second), under the 5% line for the second week running. The aerobic base supports this week's 90 min ride; watch the same number on Saturday.</p>
+      </div>
+      <div class="insight">
+        <div class="framework">Seiler · Polarized Intensity</div>
+        <p>Last week's one miss was <b>40 min at 149 bpm</b> on Friday's group ride: Zone 3 in a recovery week. This week has two planned hard sessions and five easy ones. Keep it that way; Thursday and Tuesday carry the hard work.</p>
+      </div>
+    </div>
+
+    <div class="card-title" style="margin-top:4px;">Coaching Tips — Right Now</div>
+    <ul class="tips">
+      <li><b>Today</b>: the walk rule is the session. HR over 147 means walk, even on flat ground.</li>
+      <li><b>Tonight</b>: lights out by 10. Thursday's intervals are the week's biggest bike stimulus.</li>
+      <li><b>Saturday</b>: practise race fueling, 40–50 g carbs per hour starting at minute 20.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Demo data for a fictional athlete. In real use this page is regenerated each morning by the <span class="sources">update-dashboard</span> skill from Strava, training/, reviews/, races/ and health/.<br/>
+    <span class="sources">athlete-profile.md · training/plan.md · training/week-2027-04-05.md · reviews/2027-04-04.md · health/vitals-log.md · health/2027-04-06.md · races/2027-05-15-lakeside-olympic-dossier.md</span>
+  </footer>
+
+</div>
+
+<script>
+  function buildBarChart(containerId, data, color, unit, decimals) {
+    const container = document.getElementById(containerId);
+    const max = Math.max(...data.map(d => d.value)) * 1.15;
+    data.forEach(d => {
+      const col = document.createElement('div');
+      col.className = 'bar-col' + (d.inProgress ? ' in-progress' : '');
+      const heightPct = (d.value / max) * 100;
+
+      const cap = document.createElement('div');
+      cap.className = 'bar-cap';
+      cap.textContent = d.value.toFixed(decimals) + unit;
+
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.height = heightPct + '%';
+      bar.style.background = `linear-gradient(180deg, color-mix(in srgb, ${color} 78%, white 10%), ${color})`;
+      bar.tabIndex = 0;
+
+      const tip = document.createElement('div');
+      tip.className = 'tooltip';
+      tip.textContent = d.label + ': ' + d.value.toFixed(decimals) + unit + (d.inProgress ? ' (in progress)' : '');
+      bar.appendChild(tip);
+
+      const xlabel = document.createElement('div');
+      xlabel.className = 'bar-x-label';
+      xlabel.textContent = d.label;
+
+      col.appendChild(cap);
+      col.appendChild(bar);
+      col.appendChild(xlabel);
+
+      if (d.inProgress) {
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = 'in progress';
+        col.appendChild(tag);
+      }
+
+      container.appendChild(col);
+    });
+  }
+
+  // ---------- radial gauge (speedometer-style dial) ----------
+  function buildRadialGauge(svgId, value, min, max, zones, decimals, label) {
+    const svg = document.getElementById(svgId);
+    const cx = 120, cy = 112, r = 72, sw = 15;
+    const tOf = v => (v - min) / (max - min);
+    const ptAt = (t, radius) => {
+      const a = Math.PI * (1 - Math.max(0, Math.min(1, t)));
+      return [cx + radius * Math.cos(a), cy - radius * Math.sin(a)];
+    };
+    const arcPath = (tFrom, tTo, radius, steps) => {
+      let d = '';
+      for (let i = 0; i <= steps; i++) {
+        const t = tFrom + (tTo - tFrom) * i / steps;
+        const [x, y] = ptAt(t, radius);
+        d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' ';
+      }
+      return d;
+    };
+    let html = '';
+    zones.forEach(z => {
+      html += `<path class="gauge-track" d="${arcPath(tOf(z.from), tOf(z.to), r, 24)}" stroke="${z.color}" stroke-width="${sw}" opacity="${z.opacity ?? 1}"></path>`;
+    });
+    // ticks + labels at min, mid, max — placed with generous clearance so nothing clips the viewBox edge
+    [min, (min + max) / 2, max].forEach(v => {
+      const [x1, y1] = ptAt(tOf(v), r + 7);
+      const [x2, y2] = ptAt(tOf(v), r + 13);
+      html += `<line class="gauge-tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"></line>`;
+      const t = tOf(v);
+      const anchor = t < 0.15 ? 'start' : t > 0.85 ? 'end' : 'middle';
+      const [lx, ly] = ptAt(t, r + 24);
+      html += `<text class="gauge-tick-label" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}">${v.toFixed(1)}</text>`;
+    });
+    // needle — confined to the upper half (y <= cy always), so center text below is always clear of it
+    const needleColor = getComputedStyle(document.documentElement).getPropertyValue('--tech-glow').trim();
+    const [nx, ny] = ptAt(tOf(value), r - 16);
+    html += `<line class="gauge-needle" x1="${cx}" y1="${cy}" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}" stroke="${needleColor}" stroke-width="3"></line>`;
+    html += `<circle class="gauge-hub" cx="${cx}" cy="${cy}" r="5" fill="${needleColor}"></circle>`;
+    html += `<text class="gauge-value" x="${cx}" y="${cy + 30}" fill="${needleColor}" text-anchor="middle">${value.toFixed(decimals)}</text>`;
+    html += `<text class="gauge-label" x="${cx}" y="${cy + 44}" text-anchor="middle">${label}</text>`;
+    svg.innerHTML = html;
+  }
+
+  // ---------- donut (discipline split of Total Training Hours) ----------
+  function buildDonut(svgId, segments, centerVal, centerLabel) {
+    const svg = document.getElementById(svgId);
+    const cx = 54, cy = 54, r = 40, sw = 16;
+    const total = segments.reduce((s, seg) => s + seg.value, 0);
+    let acc = 0;
+    let html = '';
+    segments.forEach(seg => {
+      const frac = seg.value / total;
+      const circumference = 2 * Math.PI * r;
+      const dash = frac * circumference;
+      const gap = circumference - dash;
+      const offset = circumference - acc * circumference; // rotate(-90) transform already starts the circle at 12 o'clock
+      html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${sw}"
+        stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"
+        transform="rotate(-90 ${cx} ${cy})"><title>${seg.label}: ${Math.round(frac * 100)}%</title></circle>`;
+      acc += frac;
+    });
+    html += `<text class="donut-center-val" x="${cx}" y="${cy - 2}">${centerVal}</text>`;
+    html += `<text class="donut-center-label" x="${cx}" y="${cy + 10}">${centerLabel}</text>`;
+    svg.innerHTML = html;
+  }
+
+  // ---------- performance trend charts (swim/bike/run, last 10 sessions vs. A-goal) ----------
+  function buildTrendChart(svgId, points, color, goalValue, fmt) {
+    const svg = document.getElementById(svgId);
+    // viewBox = the SVG's real rendered pixel size (1 unit = 1px both ways), so
+    // axis text never gets stretched when the column width changes.
+    const w = Math.round(svg.clientWidth) || 340;
+    const h = Math.round(svg.clientHeight) || 118;
+    const padL = 30, padR = 8, padT = 14, padB = 20;
+    const values = points.map(p => p.value);
+    const lo = Math.min(...values, goalValue) * 0.90;
+    const hi = Math.max(...values, goalValue) * 1.10;
+    const range = (hi - lo) || 1;
+    const plotW = w - padL - padR, plotH = h - padT - padB;
+    const stepX = points.length > 1 ? plotW / (points.length - 1) : 0;
+    const xAt = i => padL + i * stepX;
+    const yAt = v => padT + (1 - (v - lo) / range) * plotH;
+
+    const pts = points.map((p, i) => [xAt(i), yAt(p.value)]);
+    const lineD = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const areaD = lineD + ` L${pts[pts.length - 1][0].toFixed(1)},${padT + plotH} L${pts[0][0].toFixed(1)},${padT + plotH} Z`;
+    const goalY = yAt(goalValue);
+
+    let svgHTML = '';
+    // horizontal gridlines at 25/50/75%
+    [0.25, 0.5, 0.75].forEach(f => {
+      const gy = padT + f * plotH;
+      svgHTML += `<line class="grid-h" x1="${padL}" y1="${gy.toFixed(1)}" x2="${w - padR}" y2="${gy.toFixed(1)}"></line>`;
+    });
+    // y-axis min/max labels
+    svgHTML += `<text class="axis-y" x="2" y="${(padT + 3).toFixed(1)}">${fmt(hi)}</text>`;
+    svgHTML += `<text class="axis-y" x="2" y="${(padT + plotH).toFixed(1)}">${fmt(lo)}</text>`;
+    // goal dashed line — no floating "GOAL" text on the line itself: the goal line's right end and the most recent data point
+    // are always at the same x-position by construction, so any label there
+    // was guaranteed to collide with the line eventually. The goal value is
+    // already stated in the header above ("Goal 2:40/100yd") and the
+    // chart-legend already says "dashed line = A-goal target".
+    svgHTML += `<line class="goal-line" x1="${padL}" y1="${goalY.toFixed(1)}" x2="${w - padR}" y2="${goalY.toFixed(1)}" stroke="${color}"></line>`;
+    // area + line
+    svgHTML += `<path class="trend-area" d="${areaD}" fill="${color}"></path>`;
+    svgHTML += `<path class="trend-line" d="${lineD}" stroke="${color}"></path>`;
+    // points + x labels — pick evenly-spaced label indices (not modulo + a
+    // forced last index, which could land two labels right next to each
+    // other and overlap) so labels stay legible regardless of point count.
+    // Every point still gets a hover tooltip either way.
+    const targetLabels = Math.min(7, points.length);
+    const labelIndices = new Set();
+    for (let k = 0; k < targetLabels; k++) {
+      labelIndices.add(Math.round(k * (points.length - 1) / Math.max(1, targetLabels - 1)));
+    }
+    const ptRadius = points.length > 18 ? 2 : points.length > 10 ? 2.7 : 3.4;
+    points.forEach((p, i) => {
+      const [x, y] = pts[i];
+      svgHTML += `<circle class="trend-pt" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${ptRadius}" fill="${color}"><title>${p.label}: ${fmt(p.value)}</title></circle>`;
+      if (labelIndices.has(i)) {
+        svgHTML += `<text class="axis-x" x="${x.toFixed(1)}" y="${h - 4}" text-anchor="middle">${p.label}</text>`;
+      }
+    });
+
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.innerHTML = svgHTML;
+  }
+
+  const fmtSwim = v => Math.floor(v) + ':' + String(Math.round((v % 1) * 60)).padStart(2, '0');
+  const fmtBike = v => v.toFixed(1);
+  const fmtRun = v => Math.floor(v) + ':' + String(Math.round((v % 1) * 60)).padStart(2, '0');
+
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  buildBarChart('chart-volume', [
+    { label: 'Mar 1 (Wk5)', value: 5.2 },
+    { label: 'Mar 8 (Wk6)', value: 3.4 },
+    { label: 'Mar 15 (Wk7)', value: 5.6 },
+    { label: 'Mar 22 (Wk8)', value: 6.0 },
+    { label: 'Mar 29 (Wk9)', value: 3.9 },
+    { label: 'Apr 5 (Wk10)', value: 1.0, inProgress: true },
+  ], css('--blue-450'), 'h', 1);
+
+  buildBarChart('chart-vert', [
+    { label: 'Mar 1 (Wk5)', value: 520 },
+    { label: 'Mar 8 (Wk6)', value: 310 },
+    { label: 'Mar 15 (Wk7)', value: 690 },
+    { label: 'Mar 22 (Wk8)', value: 780 },
+    { label: 'Mar 29 (Wk9)', value: 410 },
+    { label: 'Apr 5 (Wk10)', value: 0, inProgress: true },
+  ], css('--aqua'), 'ft', 0);
+
+  buildRadialGauge('gauge-acwr', 0.77, 0, 2.0, [
+    { from: 0, to: 0.8, color: css('--baseline'), opacity: .5 },
+    { from: 0.8, to: 1.3, color: css('--good') },
+    { from: 1.3, to: 1.5, color: css('--warning') },
+    { from: 1.5, to: 2.0, color: css('--critical') },
+  ], 2, 'ACWR');
+
+  buildDonut('hero-donut', [
+    { label: 'Swim', value: 27.5, color: css('--blue-450') },
+    { label: 'Bike', value: 36.0, color: css('--aqua') },
+    { label: 'Run', value: 24.5, color: css('--green') },
+    { label: 'Strength', value: 12.0, color: css('--violet') },
+  ], '72.7h', 'TOTAL');
+
+  // Weekly averages (Mon-start bins), one point per week with activity.
+  buildTrendChart('trend-swim', [
+    { label: '1/11', value: 3.33 }, { label: '1/18', value: 3.22 }, { label: '1/25', value: 3.25 },
+    { label: '2/1', value: 3.08 }, { label: '2/8', value: 3.02 }, { label: '2/15', value: 3.05 },
+    { label: '2/22', value: 2.93 }, { label: '3/1', value: 2.87 }, { label: '3/8', value: 2.85 },
+    { label: '3/15', value: 2.80 }, { label: '3/22', value: 2.73 }, { label: '3/29', value: 2.68 },
+    { label: '4/5', value: 2.68 },
+  ], css('--blue-450'), 2.5, fmtSwim);
+
+  buildTrendChart('trend-bike', [
+    { label: '1/11', value: 14.1 }, { label: '1/18', value: 14.6 }, { label: '1/25', value: 14.4 },
+    { label: '2/1', value: 14.9 }, { label: '2/8', value: 15.0 }, { label: '2/15', value: 15.3 },
+    { label: '2/22', value: 15.1 }, { label: '3/1', value: 15.6 }, { label: '3/8', value: 15.4 },
+    { label: '3/15', value: 15.9 }, { label: '3/22', value: 16.2 }, { label: '3/29', value: 16.4 },
+  ], css('--aqua'), 17.0, fmtBike);
+
+  buildTrendChart('trend-run', [
+    { label: '1/11', value: 13.10 }, { label: '1/18', value: 12.95 }, { label: '1/25', value: 13.02 },
+    { label: '2/1', value: 12.80 }, { label: '2/8', value: 12.65 }, { label: '2/15', value: 12.70 },
+    { label: '2/22', value: 12.40 }, { label: '3/1', value: 12.25 }, { label: '3/8', value: 12.30 },
+    { label: '3/15', value: 12.05 }, { label: '3/22', value: 11.70 }, { label: '3/29', value: 11.40 },
+  ], css('--green'), 11.0, fmtRun);
+
+  // Live countdown to the race start. In real use RACE_START is the goal race's
+  // date and wave time from athlete-profile.md, e.g. new Date('2027-05-15T07:30:00').
+  // The demo keeps it 38 days out from whenever the page is opened so it never expires.
+  const demoStart = new Date(); demoStart.setHours(7, 30, 0, 0); demoStart.setDate(demoStart.getDate() + 38);
+  const RACE_START = demoStart;
+  function updateCountdown() {
+    let diff = Math.max(0, RACE_START.getTime() - Date.now());
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor(diff / 3600000) % 24;
+    const mins = Math.floor(diff / 60000) % 60;
+    const secs = Math.floor(diff / 1000) % 60;
+    document.getElementById('cd-days').textContent = days;
+    document.getElementById('cd-hours').textContent = String(hours).padStart(2, '0');
+    document.getElementById('cd-mins').textContent = String(mins).padStart(2, '0');
+    document.getElementById('cd-secs').textContent = String(secs).padStart(2, '0');
+  }
+  updateCountdown();
+  setInterval(updateCountdown, 1000);
+</script>
+</html>

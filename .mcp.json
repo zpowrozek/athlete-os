@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "coros": {
+      "type": "http",
+      "url": "https://mcpus.coros.com/mcp"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# Secrets
+.env
+
+# Machine-local Claude Code files
+.claude/settings.local.json
+.claude/logs/
+.claude/memory-backup/
+
+# OS / Python
+.DS_Store
+__pycache__/
+*.pyc
